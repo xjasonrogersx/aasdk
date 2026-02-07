@@ -141,6 +141,11 @@ check_dependencies() {
 }
 
 setup_cross_compilation() {
+    if [ -f /.dockerenv ]; then
+        print_step "Running in Docker container - skipping cross-compilation setup"
+        return
+    fi
+    
     if [ "$TARGET_ARCH" != "amd64" ]; then
         print_step "Setting up cross-compilation for ${TARGET_ARCH}..."
         
@@ -198,9 +203,24 @@ build_protobuf() {
         mkdir -p protobuf/build
         cd protobuf/build
         
+        local protobuf_cmake_args="$CMAKE_ARGS"
+        if [ "$TARGET_ARCH" != "amd64" ]; then
+            case $TARGET_ARCH in
+                arm64)
+                    protobuf_cmake_args="$protobuf_cmake_args -DCMAKE_INSTALL_PREFIX=/usr/aarch64-linux-gnu"
+                    ;;
+                armhf)
+                    protobuf_cmake_args="$protobuf_cmake_args -DCMAKE_INSTALL_PREFIX=/usr/arm-linux-gnueabihf"
+                    ;;
+                i386)
+                    # For i386, install to default location since it's not true cross-compilation
+                    ;;
+            esac
+        fi
+        
         cmake -DCMAKE_BUILD_TYPE=Release \
               -DTARGET_ARCH=$TARGET_ARCH \
-              $CMAKE_ARGS \
+              $protobuf_cmake_args \
               ..
         
         make -j$JOBS
@@ -447,7 +467,7 @@ main() {
     # Build process
     check_dependencies
     setup_cross_compilation
-    build_protobuf
+    # build_protobuf  # Skipped since protobuf packages are installed
     configure_cmake
     build_project
     validate_build

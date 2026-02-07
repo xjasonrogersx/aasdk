@@ -132,11 +132,9 @@ check_dependencies() {
         print_error "Missing dependencies detected:"
         printf '%s\n' "${missing_deps[@]}"
         echo
-        echo -e "${YELLOW}To install missing dependencies on Ubuntu/Debian:${NC}"
-        echo "sudo apt update && sudo apt install -y ${missing_deps[*]}"
-        echo
-        echo -e "${YELLOW}Or use the DevContainer for automatic dependency management.${NC}"
-        exit 1
+        echo -e "${YELLOW}Installing missing dependencies...${NC}"
+        apt update && apt install -y ${missing_deps[*]}
+        print_success "Dependencies installed"
     fi
     
     print_success "All dependencies found"

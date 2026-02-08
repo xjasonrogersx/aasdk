@@ -157,32 +157,44 @@ setup_cross_compilation() {
         
         case $TARGET_ARCH in
             arm64)
-                export CMAKE_C_COMPILER=aarch64-linux-gnu-gcc
-                export CMAKE_CXX_COMPILER=aarch64-linux-gnu-g++
-                CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH=/usr/aarch64-linux-gnu"
-                CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER"
-                CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY"
-                CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY"
-                
-                if ! command -v aarch64-linux-gnu-gcc &> /dev/null; then
+                if command -v aarch64-linux-gnu-gcc &> /dev/null; then
+                    export CMAKE_C_COMPILER=aarch64-linux-gnu-gcc
+                    export CMAKE_CXX_COMPILER=aarch64-linux-gnu-g++
+                elif command -v aarch64-linux-gnu-gcc-8 &> /dev/null; then
+                    export CMAKE_C_COMPILER=aarch64-linux-gnu-gcc-8
+                    export CMAKE_CXX_COMPILER=aarch64-linux-gnu-g++-8
+                elif command -v aarch64-linux-gnu-gcc-9 &> /dev/null; then
+                    export CMAKE_C_COMPILER=aarch64-linux-gnu-gcc-9
+                    export CMAKE_CXX_COMPILER=aarch64-linux-gnu-g++-9
+                else
                     print_error "ARM64 cross-compiler not found"
                     echo "Install with: sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu"
                     exit 1
                 fi
-                ;;
-            armhf)
-                export CMAKE_C_COMPILER=arm-linux-gnueabihf-gcc
-                export CMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++
-                CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH=/usr/arm-linux-gnueabihf"
+                CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH=/usr/aarch64-linux-gnu"
                 CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER"
                 CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY"
                 CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY"
-                
-                if ! command -v arm-linux-gnueabihf-gcc &> /dev/null; then
+                ;;
+            armhf)
+                if command -v arm-linux-gnueabihf-gcc &> /dev/null; then
+                    export CMAKE_C_COMPILER=arm-linux-gnueabihf-gcc
+                    export CMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++
+                elif command -v arm-linux-gnueabihf-gcc-8 &> /dev/null; then
+                    export CMAKE_C_COMPILER=arm-linux-gnueabihf-gcc-8
+                    export CMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++-8
+                elif command -v arm-linux-gnueabihf-gcc-9 &> /dev/null; then
+                    export CMAKE_C_COMPILER=arm-linux-gnueabihf-gcc-9
+                    export CMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++-9
+                else
                     print_error "ARMHF cross-compiler not found"
                     echo "Install with: sudo apt install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf"
                     exit 1
                 fi
+                CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH=/usr/arm-linux-gnueabihf"
+                CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER"
+                CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY"
+                CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY"
                 ;;
             i386)
                 CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_C_FLAGS=-m32 -DCMAKE_CXX_FLAGS=-m32"
@@ -224,6 +236,8 @@ build_protobuf() {
             esac
         fi
         
+        export CC="$CMAKE_C_COMPILER"
+        export CXX="$CMAKE_CXX_COMPILER"
         cmake -DCMAKE_BUILD_TYPE=Release \
               -DTARGET_ARCH=$TARGET_ARCH \
               $protobuf_cmake_args \

@@ -203,7 +203,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")  # macOS
     find_package(protobuf REQUIRED CONFIG)
     find_package(absl REQUIRED)
 else ()
-    find_package(Protobuf REQUIRED)
+    # Linux specific command
+    find_path(Protobuf_INCLUDE_DIR google/protobuf/message.h PATHS /usr/include)
+    find_library(Protobuf_LIBRARY protobuf PATHS /usr/lib)
+    find_program(PROTOBUF_PROTOC_EXECUTABLE protoc)
+    if(NOT Protobuf_INCLUDE_DIR OR NOT Protobuf_LIBRARY OR NOT PROTOBUF_PROTOC_EXECUTABLE)
+        message(FATAL_ERROR "Protobuf not found. Please install libprotobuf-dev and protobuf-compiler")
+    endif()
+    set(Protobuf_FOUND TRUE)
 endif ()
 
 include(FindProtobuf)

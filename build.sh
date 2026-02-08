@@ -140,6 +140,29 @@ check_dependencies() {
     print_success "All dependencies found"
 }
 
+find_cross_compiler() {
+    local prefix="$1"
+    local compiler=""
+    
+    # First try the base name (might be a symlink to latest)
+    if command -v "${prefix}gcc" &> /dev/null; then
+        compiler="$(command -v "${prefix}gcc")"
+    else
+        # Find all versioned compilers and pick the latest
+        local candidates=($(ls /usr/bin/${prefix}gcc-* 2>/dev/null | sort -V))
+        if [ ${#candidates[@]} -gt 0 ]; then
+            compiler="${candidates[-1]}"
+        fi
+    fi
+    
+    if [ -n "$compiler" ]; then
+        echo "$compiler"
+        return 0
+    else
+        return 1
+    fi
+}
+
 setup_cross_compilation() {
     # if target arch equal actual arch, skip cross-compilation setup
 #    if [ "$TARGET_ARCH" = "$(dpkg --print-architecture)" ]; then
@@ -157,15 +180,10 @@ setup_cross_compilation() {
         
         case $TARGET_ARCH in
             arm64)
-                if command -v aarch64-linux-gnu-gcc &> /dev/null; then
-                    export CMAKE_C_COMPILER=aarch64-linux-gnu-gcc
-                    export CMAKE_CXX_COMPILER=aarch64-linux-gnu-g++
-                elif command -v aarch64-linux-gnu-gcc-8 &> /dev/null; then
-                    export CMAKE_C_COMPILER=aarch64-linux-gnu-gcc-8
-                    export CMAKE_CXX_COMPILER=aarch64-linux-gnu-g++-8
-                elif command -v aarch64-linux-gnu-gcc-9 &> /dev/null; then
-                    export CMAKE_C_COMPILER=aarch64-linux-gnu-gcc-9
-                    export CMAKE_CXX_COMPILER=aarch64-linux-gnu-g++-9
+                local c_compiler=$(find_cross_compiler "aarch64-linux-gnu-")
+                if [ $? -eq 0 ]; then
+                    export CMAKE_C_COMPILER="$c_compiler"
+                    export CMAKE_CXX_COMPILER="${c_compiler/gcc/g++}"
                 else
                     print_error "ARM64 cross-compiler not found"
                     echo "Install with: sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu"
@@ -177,15 +195,10 @@ setup_cross_compilation() {
                 CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY"
                 ;;
             armhf)
-                if command -v arm-linux-gnueabihf-gcc &> /dev/null; then
-                    export CMAKE_C_COMPILER=arm-linux-gnueabihf-gcc
-                    export CMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++
-                elif command -v arm-linux-gnueabihf-gcc-8 &> /dev/null; then
-                    export CMAKE_C_COMPILER=arm-linux-gnueabihf-gcc-8
-                    export CMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++-8
-                elif command -v arm-linux-gnueabihf-gcc-9 &> /dev/null; then
-                    export CMAKE_C_COMPILER=arm-linux-gnueabihf-gcc-9
-                    export CMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++-9
+                local c_compiler=$(find_cross_compiler "arm-linux-gnueabihf-")
+                if [ $? -eq 0 ]; then
+                    export CMAKE_C_COMPILER="$c_compiler"
+                    export CMAKE_CXX_COMPILER="${c_compiler/gcc/g++}"
                 else
                     print_error "ARMHF cross-compiler not found"
                     echo "Install with: sudo apt install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf"

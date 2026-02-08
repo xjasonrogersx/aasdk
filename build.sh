@@ -141,8 +141,14 @@ check_dependencies() {
 }
 
 setup_cross_compilation() {
-    if [ -f /.dockerenv ]; then
-        print_step "Running in Docker container - skipping cross-compilation setup"
+    # if target arch equal actual arch, skip cross-compilation setup
+    if [ "$TARGET_ARCH" = "$(dpkg --print-architecture)" ]; then
+        print_step "Target architecture is native, skipping cross-compilation setup"
+        return
+    fi
+
+    if [ -f /.dockerenv ] || [ -f /proc/sys/fs/binfmt_misc/qemu-aarch64 ] || [ -f /proc/sys/fs/binfmt_misc/qemu-arm ]; then
+        print_step "Running in Docker container for native build - skipping cross-compilation setup"
         return
     fi
     

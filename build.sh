@@ -171,7 +171,7 @@ setup_cross_compilation() {
                     echo "Install with: sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu"
                     exit 1
                 fi
-                CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH=/usr/aarch64-linux-gnu"
+                CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH=/usr/aarch64-linux-gnu;/usr"
                 CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER"
                 CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY"
                 CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY"
@@ -191,7 +191,7 @@ setup_cross_compilation() {
                     echo "Install with: sudo apt install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf"
                     exit 1
                 fi
-                CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH=/usr/arm-linux-gnueabihf"
+                CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH=/usr/arm-linux-gnueabihf;/usr"
                 CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER"
                 CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY"
                 CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY"

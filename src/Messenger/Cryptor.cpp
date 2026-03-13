@@ -168,7 +168,15 @@ namespace aasdk {
         auto readSize = sslWrapper_->sslRead(ssl_, currentBuffer.data, currentBuffer.size);
 
         if (readSize <= 0) {
-          throw error::Error(error::ErrorCode::SSL_READ, sslWrapper_->getError(ssl_, readSize));
+          const auto nativeError = sslWrapper_->getError(ssl_, readSize);
+          const std::string info = "decrypt sslRead<=0"
+                                   " frameLength=" + std::to_string(frameLength) +
+                                   " payloadLength=" + std::to_string(length) +
+                                   " availableBytes=" + std::to_string(availableBytes) +
+                                   " totalReadSize=" + std::to_string(totalReadSize) +
+                                   " requestedReadBytes=" + std::to_string(readBytes) +
+                                   " returnCode=" + std::to_string(readSize);
+          throw error::Error(error::ErrorCode::SSL_READ, nativeError, info);
         }
 
         totalReadSize += readSize;
@@ -206,7 +214,13 @@ namespace aasdk {
         const auto readSize = sslWrapper_->bioRead(bIOs_.second, currentBuffer.data, currentBuffer.size);
 
         if (readSize <= 0) {
-          throw error::Error(error::ErrorCode::SSL_BIO_READ, sslWrapper_->getError(ssl_, readSize));
+          const auto nativeError = sslWrapper_->getError(ssl_, readSize);
+          const std::string info = "read bioRead<=0"
+                                   " pendingSize=" + std::to_string(pendingSize) +
+                                   " totalReadSize=" + std::to_string(totalReadSize) +
+                                   " currentBufferSize=" + std::to_string(currentBuffer.size) +
+                                   " returnCode=" + std::to_string(readSize);
+          throw error::Error(error::ErrorCode::SSL_BIO_READ, nativeError, info);
         }
 
         totalReadSize += readSize;

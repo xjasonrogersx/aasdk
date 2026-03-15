@@ -18,6 +18,9 @@
 // along with aasdk. If not, see <http://www.gnu.org/licenses/>.
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstdlib>
 #include <functional>
 #include <fstream>
 #include <sstream>
@@ -28,6 +31,82 @@
 
 namespace aasdk {
   namespace messenger {
+
+    namespace {
+
+      struct RuntimeTraceConfig {
+        bool enabled{false};
+        int sampleEvery{1};
+      };
+
+      static auto parseEnvBool(const char* value, bool defaultValue) -> bool {
+        if (value == nullptr) {
+          return defaultValue;
+        }
+
+        const std::string token(value);
+        if (token.empty()) {
+          return defaultValue;
+        }
+
+        if (token == "1" || token == "true" || token == "TRUE" || token == "on" ||
+            token == "ON" || token == "yes" || token == "YES") {
+          return true;
+        }
+
+        if (token == "0" || token == "false" || token == "FALSE" || token == "off" ||
+            token == "OFF" || token == "no" || token == "NO") {
+          return false;
+        }
+
+        return defaultValue;
+      }
+
+      static auto parseEnvInt(const char* value, int defaultValue, int minValue, int maxValue) -> int {
+        if (value == nullptr) {
+          return defaultValue;
+        }
+
+        try {
+          const int parsed = std::stoi(value);
+          return std::max(minValue, std::min(maxValue, parsed));
+        } catch (...) {
+          return defaultValue;
+        }
+      }
+
+      static auto readRuntimeTraceConfig() -> RuntimeTraceConfig {
+        RuntimeTraceConfig cfg;
+        cfg.enabled = parseEnvBool(std::getenv("AASDK_TRACE_CRYPTOR"), false);
+        cfg.sampleEvery = parseEnvInt(std::getenv("AASDK_TRACE_CRYPTOR_SAMPLE_EVERY"), 1, 1, 1000);
+        return cfg;
+      }
+
+      static auto getRuntimeTraceConfig() -> RuntimeTraceConfig {
+        static RuntimeTraceConfig cached = readRuntimeTraceConfig();
+        static auto lastRefresh = std::chrono::steady_clock::now();
+
+        const auto now = std::chrono::steady_clock::now();
+        if (now - lastRefresh > std::chrono::seconds(1)) {
+          cached = readRuntimeTraceConfig();
+          lastRefresh = now;
+        }
+
+        return cached;
+      }
+
+      static auto shouldEmitTraceSample() -> bool {
+        static std::atomic<uint64_t> counter{0};
+        const RuntimeTraceConfig cfg = getRuntimeTraceConfig();
+        if (!cfg.enabled) {
+          return false;
+        }
+
+        const uint64_t current = ++counter;
+        return (current % static_cast<uint64_t>(cfg.sampleEvery)) == 0;
+      }
+
+    } // namespace
 
     // Embedded certificate constants
     static const std::string cCertificate = "-----BEGIN CERTIFICATE-----\n\
@@ -95,7 +174,8 @@ KAwp3tIHPoJOQiKNQ3/qks5km/9dujUGU2ARiU3qmxLMdgegFz8e\n\
     static std::string loadCertificate() {
       // Try paths in order of preference
       std::vector<std::string> certPaths = {
-        "/etc/openauto/headunit.crt",           // Installed system path
+        "/etc/aasdk/headunit.crt",              // Installed system path
+        "/etc/openauto/headunit.crt",           // Legacy path (backward compatibility)
         "/usr/share/aasdk/cert/headunit.crt",   // Alternative system path
         "./cert/headunit.crt",                   // Development path
         "../cert/headunit.crt"                   // Alternative development path
@@ -117,7 +197,8 @@ KAwp3tIHPoJOQiKNQ3/qks5km/9dujUGU2ARiU3qmxLMdgegFz8e\n\
     static std::string loadPrivateKey() {
       // Try paths in order of preference
       std::vector<std::string> keyPaths = {
-        "/etc/openauto/headunit.key",           // Installed system path
+        "/etc/aasdk/headunit.key",              // Installed system path
+        "/etc/openauto/headunit.key",           // Legacy path (backward compatibility)
         "/usr/share/aasdk/cert/headunit.key",   // Alternative system path
         "./cert/headunit.key",                   // Development path
         "../cert/headunit.key"                   // Alternative development path
@@ -261,37 +342,64 @@ KAwp3tIHPoJOQiKNQ3/qks5km/9dujUGU2ARiU3qmxLMdgegFz8e\n\
     }
 
     size_t Cryptor::decrypt(common::Data &output, const common::DataConstBuffer &buffer, int frameLength) {
-      int overhead = 29;
-      int length = frameLength - overhead;
       std::lock_guard<decltype(mutex_)> lock(mutex_);
+
+      const bool traceSample = shouldEmitTraceSample();
+      const int pendingBeforeWrite = sslWrapper_->getAvailableBytes(ssl_);
 
       this->write(buffer);
       const size_t beginOffset = output.size();
 
-      size_t totalReadSize = 0;                                                                               // Initialise
-      size_t availableBytes = length;
-      size_t readBytes = (availableBytes - totalReadSize) > 2048 ? 2048 : availableBytes -
-                                                                  totalReadSize;                     // Calculate How many Bytes to Read
-      output.resize(output.size() +
-                    readBytes);                                                               // Resize Output to match the bytes we want to read
+      size_t totalReadSize = 0;
+      while (true) {
+        const size_t readBytes = 2048;
+        output.resize(beginOffset + totalReadSize + readBytes);
 
-      // We try to be a bit more explicit here, using the frame length from the frame itself rather than just blindly reading from the SSL buffer.
-
-      while (readBytes > 0) {
         const auto &currentBuffer = common::DataBuffer(output, totalReadSize + beginOffset);
-        auto readSize = sslWrapper_->sslRead(ssl_, currentBuffer.data, currentBuffer.size);
+        const auto readSize = sslWrapper_->sslRead(ssl_, currentBuffer.data, currentBuffer.size);
 
         if (readSize <= 0) {
-          throw error::Error(error::ErrorCode::SSL_READ, sslWrapper_->getError(ssl_, readSize));
+          const auto nativeError = sslWrapper_->getError(ssl_, readSize);
+          const int pendingAfterRead = sslWrapper_->getAvailableBytes(ssl_);
+
+          if (nativeError == SSL_ERROR_WANT_READ || nativeError == SSL_ERROR_WANT_WRITE) {
+            if (traceSample) {
+              AASDK_LOG(info) << "[CryptorTrace] decrypt-drained"
+                              << " frameLength=" << frameLength
+                              << " encryptedBytesIn=" << buffer.size
+                              << " totalReadSize=" << totalReadSize
+                              << " requestedReadBytes=" << readBytes
+                              << " sslError=" << nativeError
+                              << " pendingBeforeWrite=" << pendingBeforeWrite
+                              << " pendingAfterRead=" << pendingAfterRead;
+            }
+            AASDK_LOG(debug) << "[Cryptor] SSL decrypt drained"
+                             << " frameLength=" << frameLength
+                             << " totalReadSize=" << totalReadSize
+                             << " requestedReadBytes=" << readBytes
+                             << " sslError=" << nativeError;
+            output.resize(beginOffset + totalReadSize);
+            return totalReadSize;
+          }
+
+          const std::string info = "decrypt sslRead<=0"
+                                   " frameLength=" + std::to_string(frameLength) +
+                                   " totalReadSize=" + std::to_string(totalReadSize) +
+                                   " requestedReadBytes=" + std::to_string(readBytes) +
+                                   " returnCode=" + std::to_string(readSize);
+          throw error::Error(error::ErrorCode::SSL_READ, nativeError, info);
         }
 
-        totalReadSize += readSize;
-        availableBytes = sslWrapper_->getAvailableBytes(ssl_);
-        readBytes = (length - totalReadSize) > 2048 ? 2048 : length - totalReadSize;
-        output.resize(output.size() + readBytes);
+        totalReadSize += static_cast<size_t>(readSize);
+        if (traceSample) {
+          AASDK_LOG(info) << "[CryptorTrace] decrypt-read"
+                          << " frameLength=" << frameLength
+                          << " encryptedBytesIn=" << buffer.size
+                          << " readSize=" << readSize
+                          << " totalReadSize=" << totalReadSize
+                          << " pendingBeforeWrite=" << pendingBeforeWrite;
+        }
       }
-
-      return totalReadSize;
     }
 
     common::Data Cryptor::readHandshakeBuffer() {
@@ -320,7 +428,13 @@ KAwp3tIHPoJOQiKNQ3/qks5km/9dujUGU2ARiU3qmxLMdgegFz8e\n\
         const auto readSize = sslWrapper_->bioRead(bIOs_.second, currentBuffer.data, currentBuffer.size);
 
         if (readSize <= 0) {
-          throw error::Error(error::ErrorCode::SSL_BIO_READ, sslWrapper_->getError(ssl_, readSize));
+          const auto nativeError = sslWrapper_->getError(ssl_, readSize);
+          const std::string info = "read bioRead<=0"
+                                   " pendingSize=" + std::to_string(pendingSize) +
+                                   " totalReadSize=" + std::to_string(totalReadSize) +
+                                   " currentBufferSize=" + std::to_string(currentBuffer.size) +
+                                   " returnCode=" + std::to_string(readSize);
+          throw error::Error(error::ErrorCode::SSL_BIO_READ, nativeError, info);
         }
 
         totalReadSize += readSize;

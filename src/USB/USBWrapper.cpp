@@ -39,7 +39,37 @@ namespace aasdk {
     }
 
     int USBWrapper::claimInterface(const DeviceHandle &dev_handle, int interface_number) {
-      return libusb_claim_interface(dev_handle.get(), interface_number);
+      auto *handle = dev_handle.get();
+      auto result = libusb_claim_interface(handle, interface_number);
+
+      if (result == LIBUSB_ERROR_BUSY) {
+        const auto kernelActive = libusb_kernel_driver_active(handle, interface_number);
+
+        if (kernelActive == 1) {
+          AASDK_LOG_USB(warning,
+                        std::string("claimInterface busy on iface=") +
+                            std::to_string(interface_number) +
+                            ", detaching active kernel driver before retry");
+
+          const auto detachResult = libusb_detach_kernel_driver(handle, interface_number);
+          AASDK_LOG_USB(info,
+                        std::string("detach_kernel_driver iface=") +
+                            std::to_string(interface_number) + " result=" +
+                            std::to_string(detachResult));
+
+          if (detachResult == 0 || detachResult == LIBUSB_ERROR_NOT_FOUND) {
+            result = libusb_claim_interface(handle, interface_number);
+          }
+        }
+      }
+
+      if (aasdk::common::ModernLogger::getInstance().isVerboseUsb()) {
+        std::ostringstream ss;
+        ss << "claimInterface iface=" << interface_number << " result=" << result;
+        AASDK_LOG_USB(info, ss.str());
+      }
+
+      return result;
     }
 
     DeviceHandle USBWrapper::openDeviceWithVidPid(uint16_t vendor_id, uint16_t product_id) {
@@ -134,6 +164,15 @@ namespace aasdk {
     int USBWrapper::open(libusb_device *dev, DeviceHandle &dev_handle) {
       libusb_device_handle *raw_handle;
       auto result = libusb_open(dev, &raw_handle);
+
+      if (result == 0 && raw_handle != nullptr) {
+        const auto detachResult = libusb_set_auto_detach_kernel_driver(raw_handle, 1);
+        if (aasdk::common::ModernLogger::getInstance().isVerboseUsb()) {
+          std::ostringstream ss;
+          ss << "set_auto_detach_kernel_driver result=" << detachResult;
+          AASDK_LOG_USB(info, ss.str());
+        }
+      }
 
       dev_handle = (result == 0 && raw_handle != nullptr) ? DeviceHandle(raw_handle, &libusb_close) : DeviceHandle();
       return result;

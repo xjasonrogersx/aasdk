@@ -30,6 +30,31 @@
  */
 namespace aasdk::channel::mediasink::video {
 
+  static const char* mediaSinkMessageName(int messageId) {
+    switch (messageId) {
+      case aap_protobuf::service::control::message::ControlMessageType::MESSAGE_CHANNEL_OPEN_REQUEST:
+        return "MESSAGE_CHANNEL_OPEN_REQUEST";
+      case aap_protobuf::service::media::sink::MediaMessageId::MEDIA_MESSAGE_SETUP:
+        return "MEDIA_MESSAGE_SETUP";
+      case aap_protobuf::service::media::sink::MediaMessageId::MEDIA_MESSAGE_START:
+        return "MEDIA_MESSAGE_START";
+      case aap_protobuf::service::media::sink::MediaMessageId::MEDIA_MESSAGE_STOP:
+        return "MEDIA_MESSAGE_STOP";
+      case aap_protobuf::service::media::sink::MediaMessageId::MEDIA_MESSAGE_CODEC_CONFIG:
+        return "MEDIA_MESSAGE_CODEC_CONFIG";
+      case aap_protobuf::service::media::sink::MediaMessageId::MEDIA_MESSAGE_DATA:
+        return "MEDIA_MESSAGE_DATA";
+      case aap_protobuf::service::media::sink::MediaMessageId::MEDIA_MESSAGE_ACK:
+        return "MEDIA_MESSAGE_ACK";
+      case aap_protobuf::service::media::sink::MediaMessageId::MEDIA_MESSAGE_VIDEO_FOCUS_REQUEST:
+        return "MEDIA_MESSAGE_VIDEO_FOCUS_REQUEST";
+      case aap_protobuf::service::media::sink::MediaMessageId::MEDIA_MESSAGE_VIDEO_FOCUS_NOTIFICATION:
+        return "MEDIA_MESSAGE_VIDEO_FOCUS_NOTIFICATION";
+      default:
+        return "UNKNOWN";
+    }
+  }
+
   VideoMediaSinkService::VideoMediaSinkService(boost::asio::io_service::strand &strand,
                                                messenger::IMessenger::Pointer messenger,
                                                messenger::ChannelId channelId)
@@ -105,6 +130,11 @@ namespace aasdk::channel::mediasink::video {
     AASDK_LOG_CHANNEL_MEDIA_SINK(debug, "messageHandler()");
     messenger::MessageId messageId(message->getPayload());
     common::DataConstBuffer payload(message->getPayload(), messageId.getSizeOf());
+
+    AASDK_LOG(info) << "[MediaSinkTrace][video] channel=" << messenger::channelIdToString(channelId_)
+                    << " msg_id=" << messageId.getId()
+                    << " msg_name=" << mediaSinkMessageName(messageId.getId())
+                    << " payload_bytes=" << payload.size;
 
     switch (messageId.getId()) {
       case aap_protobuf::service::control::message::ControlMessageType::MESSAGE_CHANNEL_OPEN_REQUEST:

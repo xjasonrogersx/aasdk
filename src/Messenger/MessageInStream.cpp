@@ -134,7 +134,6 @@ namespace aasdk::messenger {
 
         transport_->receive(FrameHeader::getSizeOf(), std::move(transportPromise));
       } else {
-        promise_.reset();
         AASDK_LOG_MESSENGER(debug, "Already Handling Promise");
         promise->reject(error::Error(error::ErrorCode::OPERATION_IN_PROGRESS));
       }
@@ -201,6 +200,12 @@ namespace aasdk::messenger {
   }
 
   void MessageInStream::receiveFrameSizeHandler(const common::DataConstBuffer &buffer) {
+    if (promise_ == nullptr) {
+      AASDK_LOG_MESSENGER(debug, "Dropping frame size: no active receive promise.");
+      message_.reset();
+      return;
+    }
+
     auto transportPromise = transport::ITransport::ReceivePromise::defer(strand_);
     transportPromise->then(
         [this, self = this->shared_from_this()](common::Data data) mutable {
@@ -209,8 +214,10 @@ namespace aasdk::messenger {
         [this, self = this->shared_from_this()](const error::Error &e) mutable {
           AASDK_LOG_MESSENGER(debug, "Rejecting message.");
           message_.reset();
-          promise_->reject(e);
-          promise_.reset();
+          if (promise_ != nullptr) {
+            promise_->reject(e);
+            promise_.reset();
+          }
         });
 
     FrameSize frameSize(buffer);
@@ -221,6 +228,19 @@ namespace aasdk::messenger {
   }
 
   void MessageInStream::receiveFramePayloadHandler(const common::DataConstBuffer &buffer) {
+    if (promise_ == nullptr) {
+      AASDK_LOG_MESSENGER(debug, "Dropping frame payload: no active receive promise.");
+      message_.reset();
+      return;
+    }
+
+    if (message_ == nullptr) {
+      AASDK_LOG_MESSENGER(warning, "Dropping frame payload: null message state.");
+      promise_->reject(error::Error(error::ErrorCode::OPERATION_ABORTED));
+      promise_.reset();
+      return;
+    }
+
     const ChannelId channelId = message_->getChannelId();
     const bool traceMessage = shouldTraceMessage(channelId);
     const size_t payloadSizeBefore = message_->getPayload().size();
@@ -271,8 +291,10 @@ namespace aasdk::messenger {
         catch (const error::Error &e) {
           AASDK_LOG_MESSENGER(debug, "Rejecting message.");
           message_.reset();
-          promise_->reject(e);
-          promise_.reset();
+          if (promise_ != nullptr) {
+            promise_->reject(e);
+            promise_.reset();
+          }
           return;
         }
       }
@@ -310,8 +332,10 @@ namespace aasdk::messenger {
           [this, self = this->shared_from_this()](const error::Error &e) mutable {
             message_.reset();
             AASDK_LOG_MESSENGER(debug, "Rejecting message.");
-            promise_->reject(e);
-            promise_.reset();
+            if (promise_ != nullptr) {
+              promise_->reject(e);
+              promise_.reset();
+            }
           });
 
       transport_->receive(FrameHeader::getSizeOf(), std::move(transportPromise));

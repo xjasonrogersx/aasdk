@@ -108,6 +108,12 @@ namespace aasdk::transport {
       /// How many times we have retried a LIBUSB_ERROR_NO_DEVICE on the IN endpoint
       uint32_t receiveNoDeviceRetryCount_{0};
 
+      /// Monotonic ID for receive operations (for log correlation)
+      uint64_t receiveOperationId_{0};
+
+      /// Monotonic ID for send operations (for log correlation)
+      uint64_t sendOperationId_{0};
+
       /// How many times we have retried a LIBUSB_ERROR_INTERRUPTED on the IN endpoint
       uint32_t receiveInterruptedRetryCount_{0};
 

@@ -82,7 +82,7 @@ jobs:
           fi
 
           # Limit to amd64 for non-main/develop branches to speed up cycle time during debugging
-          if [ "${{ github.ref }}" != "refs/heads/main" ] && [ "${{ github.ref }}" != "refs/heads/develop" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+          if [ "${{ github.ref }}" != "refs/heads/newdev" ] && [ "${{ github.ref }}" != "refs/heads/main" ] && [ "${{ github.ref }}" != "refs/heads/develop" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
             ARCHES="amd64"
             echo "Building only amd64 for feature/bugfix branch (automatic push)"
           fi
@@ -190,7 +190,7 @@ jobs:
             RUN_TESTS=true
           fi
           echo "RUN_TESTS=${RUN_TESTS} for this build"
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          if [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.ref }}" = "refs/heads/newdev" ]; then
             BUILD_TYPE="release"
             echo "Building release packages for main branch"
           else
